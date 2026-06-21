@@ -130,6 +130,11 @@ const routes = [
     component: () => import('../views/coach/CoachPreferences.vue'),
     meta: { requiresAuth: true, requiresCoach: true },
   },
+  {
+    path: '/coaches/:id',
+    name: 'CoachDetail',
+    component: () => import('../views/CoachDetail.vue'),
+  },
 ]
 
 const router = createRouter({

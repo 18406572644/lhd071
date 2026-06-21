@@ -82,11 +82,14 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="学员评价" min-width="200">
+          <el-table-column label="学员评价" min-width="220">
             <template #default="{ row }">
               <div v-if="row.rating" class="review-cell">
                 <el-rate v-model="row.rating" disabled size="small" />
                 <span v-if="row.review" class="review-text">{{ row.review }}</span>
+                <el-button type="primary" link size="small" @click="viewReview(row)">
+                  {{ row.reply_id ? '查看回复' : '回复评价' }}
+                </el-button>
               </div>
               <span v-else class="no-review">暂无评价</span>
             </template>
@@ -100,6 +103,63 @@
         </div>
       </div>
     </div>
+
+    <el-dialog v-model="reviewDialogVisible" title="评价详情" width="600px">
+      <div v-if="currentReview" class="review-detail">
+        <div class="review-header">
+          <div class="review-rating">
+            <el-rate v-model="currentReview.rating" disabled />
+            <span class="rating-text">{{ currentReview.rating }}分</span>
+          </div>
+          <div class="review-date">{{ currentReview.booking_date }}</div>
+        </div>
+
+        <div v-if="currentReview.tags && currentReview.tags.length > 0" class="review-tags">
+          <el-tag v-for="tag in currentReview.tags" :key="tag.id" size="small" class="review-tag">
+            {{ tag.name }}
+          </el-tag>
+        </div>
+
+        <div class="review-content">{{ currentReview.review }}</div>
+
+        <div v-if="currentReview.images && currentReview.images.length > 0" class="review-images">
+          <el-image
+            v-for="(img, index) in currentReview.images"
+            :key="index"
+            :src="img.image_url"
+            :preview-src-list="currentReview.images.map(i => i.image_url)"
+            :initial-index="index"
+            fit="cover"
+            class="review-image"
+          />
+        </div>
+
+        <div v-if="currentReview.reply" class="review-reply">
+          <div class="reply-header">
+            <span class="reply-label">我的回复</span>
+            <span class="reply-time">{{ currentReview.reply.updated_at || currentReview.reply.created_at }}</span>
+          </div>
+          <div class="reply-content">{{ currentReview.reply.content }}</div>
+        </div>
+
+        <div class="reply-section">
+          <h4 class="section-title">{{ currentReview.reply ? '修改回复' : '回复评价' }}</h4>
+          <el-input
+            v-model="replyContent"
+            type="textarea"
+            :rows="4"
+            placeholder="输入您的回复..."
+            maxlength="500"
+            show-word-limit
+          />
+          <div class="reply-actions">
+            <el-button type="primary" @click="submitReply" :loading="submittingReply">
+              {{ currentReview.reply ? '更新回复' : '提交回复' }}
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -118,6 +178,10 @@ const lessons = ref([])
 const noteContent = ref('')
 const loading = ref(false)
 const savingNote = ref(false)
+const reviewDialogVisible = ref(false)
+const currentReview = ref(null)
+const replyContent = ref('')
+const submittingReply = ref(false)
 
 const darkTableStyle = {
   '--el-table-bg-color': '#2C2C2C',
@@ -177,6 +241,42 @@ async function saveNote() {
   } catch {
   } finally {
     savingNote.value = false
+  }
+}
+
+async function viewReview(booking) {
+  reviewDialogVisible.value = true
+  currentReview.value = null
+  replyContent.value = ''
+  try {
+    const { data } = await api.get(`/bookings/${booking.id}/review`)
+    currentReview.value = data.review
+    if (data.review.reply) {
+      replyContent.value = data.review.reply.content
+    }
+  } catch {
+  }
+}
+
+async function submitReply() {
+  if (!replyContent.value.trim()) {
+    ElMessage.warning('请输入回复内容')
+    return
+  }
+  
+  if (!currentReview.value) return
+  
+  submittingReply.value = true
+  try {
+    await api.post(`/bookings/${currentReview.value.id}/review/reply`, {
+      content: replyContent.value.trim()
+    })
+    ElMessage.success('回复成功')
+    viewReview({ id: currentReview.value.id })
+    loadStudentDetail()
+  } catch {
+  } finally {
+    submittingReply.value = false
   }
 }
 
@@ -342,5 +442,116 @@ onMounted(() => {
 .empty-state p {
   margin-top: 12px;
   font-size: 14px;
+}
+
+.review-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.review-rating {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rating-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #F5F7FA;
+}
+
+.review-date {
+  color: #888;
+  font-size: 13px;
+}
+
+.review-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-tag {
+  margin: 0;
+}
+
+.review-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #ccc;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.review-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.review-image {
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.review-reply {
+  padding: 16px;
+  background: rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 8px;
+}
+
+.reply-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.reply-label {
+  color: #00E5FF;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.reply-time {
+  color: #666;
+  font-size: 12px;
+}
+
+.reply-content {
+  color: #ccc;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.reply-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+}
+
+.reply-section .section-title {
+  font-size: 15px;
+  color: #00E5FF;
+  margin: 0 0 12px 0;
+  font-weight: 600;
+}
+
+.reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 </style>

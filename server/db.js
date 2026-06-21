@@ -57,6 +57,8 @@ db.exec(`
     review TEXT,
     rating INTEGER,
     coach_note TEXT,
+    qr_token TEXT,
+    is_featured INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (slot_id) REFERENCES time_slots(id),
@@ -190,6 +192,42 @@ db.exec(`
     FOREIGN KEY (coach_id) REFERENCES coaches(id),
     FOREIGN KEY (student_id) REFERENCES users(id),
     UNIQUE(coach_id, student_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS review_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id INTEGER NOT NULL,
+    image_url TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (booking_id) REFERENCES bookings(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS review_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL CHECK(type IN ('venue', 'coach', 'general')),
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+  );
+
+  CREATE TABLE IF NOT EXISTS booking_review_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    FOREIGN KEY (booking_id) REFERENCES bookings(id),
+    FOREIGN KEY (tag_id) REFERENCES review_tags(id),
+    UNIQUE(booking_id, tag_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS review_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id INTEGER NOT NULL UNIQUE,
+    coach_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (booking_id) REFERENCES bookings(id),
+    FOREIGN KEY (coach_id) REFERENCES coaches(id)
   );
 `);
 
@@ -349,6 +387,38 @@ if (userCount === 0) {
   db.prepare('INSERT INTO coach_notes (coach_id, student_id, note) VALUES (?, ?, ?)').run(
     coach2Id, student3Id, '有滑板基础，目标明确，适合进阶训练'
   );
+
+  const insertReviewTag = db.prepare('INSERT OR IGNORE INTO review_tags (name, type) VALUES (?, ?)');
+  const defaultTags = [
+    ['教练耐心', 'coach'],
+    ['教练专业', 'coach'],
+    ['讲解细致', 'coach'],
+    ['场地干净', 'venue'],
+    ['设施完善', 'venue'],
+    ['环境舒适', 'venue'],
+    ['性价比高', 'general'],
+    ['体验很棒', 'general'],
+    ['值得推荐', 'general'],
+    ['服务周到', 'general']
+  ];
+  for (const tag of defaultTags) {
+    insertReviewTag.run(...tag);
+  }
 }
+
+function addColumnIfNotExists(table, column, definition) {
+  try {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+    const exists = columns.some(col => col.name === column);
+    if (!exists) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+    }
+  } catch (e) {
+    console.log(`迁移列 ${table}.${column} 时出错:`, e.message);
+  }
+}
+
+addColumnIfNotExists('bookings', 'qr_token', 'TEXT');
+addColumnIfNotExists('bookings', 'is_featured', 'INTEGER DEFAULT 0');
 
 module.exports = db;

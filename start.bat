@@ -3,15 +3,35 @@ echo ========================================
 echo   滑板公园预约系统 - Docker 一键启动
 echo ========================================
 echo.
-echo [1/3] 停止并清理旧容器...
-docker-compose down
+
+echo [1/5] 停止并清理旧容器...
+docker-compose down >nul 2>nul
 echo.
-echo [2/3] 构建并启动服务...
+
+echo [2/5] 清理端口占用进程 (2071, 6071)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :2071 ^| findstr LISTENING') do (
+    echo   终止占用端口 2071 的进程 PID: %%a
+    taskkill /F /PID %%a >nul 2>nul
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :6071 ^| findstr LISTENING') do (
+    echo   终止占用端口 6071 的进程 PID: %%a
+    taskkill /F /PID %%a >nul 2>nul
+)
+timeout /t 2 /nobreak >nul
+echo.
+
+echo [3/5] 构建并启动服务...
 docker-compose up -d --build
 echo.
-echo [3/3] 等待服务启动...
+
+echo [4/5] 等待服务启动...
 timeout /t 5 /nobreak >nul
 echo.
+
+echo [5/5] 验证服务状态...
+docker-compose ps
+echo.
+
 echo ========================================
 echo   服务启动完成！
 echo ========================================

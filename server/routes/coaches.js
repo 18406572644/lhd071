@@ -9,6 +9,28 @@ router.get('/', function (req, res) {
   res.json({ coaches });
 });
 
+router.get('/:id', function (req, res) {
+  const { id } = req.params;
+  const coach = db.prepare('SELECT * FROM coaches WHERE id = ?').get(id);
+  
+  if (!coach) {
+    return res.status(404).json({ error: '教练不存在' });
+  }
+  
+  const stats = db.prepare(`
+    SELECT 
+      COUNT(*) as review_count,
+      AVG(b.rating) as avg_rating
+    FROM bookings b
+    WHERE b.coach_id = ? AND b.review IS NOT NULL
+  `).get(id);
+  
+  coach.review_count = stats.review_count || 0;
+  coach.avg_rating = stats.avg_rating || null;
+  
+  res.json({ coach });
+});
+
 router.post('/', authMiddleware, roleCheck('admin'), function (req, res) {
   const { name, phone, specialty, hourly_rate, user_id } = req.body;
   if (!name) {

@@ -61,6 +61,40 @@
       </div>
     </section>
 
+    <section class="coaches-section">
+      <div class="section-header">
+        <h2 class="section-title glow-text">专业教练团队</h2>
+        <span class="section-tip">一对一私教，快速进阶</span>
+      </div>
+      <div class="coaches-grid">
+        <div
+          v-for="coach in coaches"
+          :key="coach.id"
+          class="skate-card coach-card"
+          @click="viewCoach(coach.id)"
+        >
+          <div class="coach-avatar">
+            {{ coach.name.charAt(0) }}
+          </div>
+          <div class="coach-info">
+            <h3 class="coach-name">{{ coach.name }}</h3>
+            <p class="coach-specialty">{{ coach.specialty }}</p>
+            <div class="coach-stats">
+              <div class="stat">
+                <span class="stat-value">
+                  <el-rate v-model="coach.avg_rating" disabled size="small" />
+                </span>
+                <span class="stat-label">{{ coach.review_count || 0 }}条评价</span>
+              </div>
+              <div class="stat">
+                <span class="stat-price">¥{{ coach.hourly_rate }}/小时</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="features-section">
       <h2 class="section-title glow-text">我们的服务</h2>
       <div class="features-grid">
@@ -161,10 +195,15 @@ import dayjs from 'dayjs'
 
 const router = useRouter()
 const recommendations = ref([])
+const coaches = ref([])
 
 const isLoggedIn = computed(() => {
   return !!localStorage.getItem('token')
 })
+
+function viewCoach(coachId) {
+  router.push(`/coaches/${coachId}`)
+}
 
 function getStatusText(status) {
   const map = {
@@ -204,8 +243,18 @@ async function fetchRecommendations() {
   }
 }
 
+async function fetchCoaches() {
+  try {
+    const { data } = await api.get('/coaches')
+    coaches.value = data.coaches || []
+  } catch {
+    coaches.value = []
+  }
+}
+
 onMounted(() => {
   fetchRecommendations()
+  fetchCoaches()
 })
 </script>
 
@@ -381,6 +430,98 @@ onMounted(() => {
   color: #00E5FF;
 }
 
+.coaches-section {
+  padding: 60px 0;
+}
+
+.coaches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.coach-card {
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  gap: 16px;
+  border: 2px solid transparent;
+}
+
+.coach-card:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+  transform: translateY(-4px);
+}
+
+.coach-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00E5FF, #0099CC);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.coach-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coach-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #F5F7FA;
+  margin: 0;
+}
+
+.coach-specialty {
+  font-size: 13px;
+  color: #00E5FF;
+  margin: 0;
+}
+
+.coach-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  display: flex;
+  align-items: center;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #888;
+}
+
+.stat-price {
+  font-size: 16px;
+  font-weight: 700;
+  color: #00E5FF;
+}
+
+.section-tip {
+  font-size: 13px;
+  color: #888;
+}
+
 .features-section {
   padding: 60px 0;
 }
@@ -540,6 +681,10 @@ onMounted(() => {
 
   .recommend-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .coaches-grid {
+    grid-template-columns: 1fr;
   }
 
   .section-header {
