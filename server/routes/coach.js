@@ -29,22 +29,32 @@ router.put('/profile', authMiddleware, roleCheck('coach'), function (req, res) {
     return res.status(404).json({ error: '教练信息不存在' });
   }
   const { name, phone, specialty, hourly_rate, bio, photos, videos, experience } = req.body;
+  
+  const existing = db.prepare('SELECT * FROM coaches WHERE id = ?').get(coachId);
+  
   db.prepare(`
     UPDATE coaches SET 
-      name = COALESCE(?, name),
-      phone = COALESCE(?, phone),
-      specialty = COALESCE(?, specialty),
-      hourly_rate = COALESCE(?, hourly_rate),
-      bio = COALESCE(?, bio),
-      photos = COALESCE(?, photos),
-      videos = COALESCE(?, videos),
-      experience = COALESCE(?, experience)
+      name = ?,
+      phone = ?,
+      specialty = ?,
+      hourly_rate = ?,
+      bio = ?,
+      photos = ?,
+      videos = ?,
+      experience = ?
     WHERE id = ?
   `).run(
-    name || null, phone || null, specialty || null, hourly_rate || null,
-    bio || null, photos || null, videos || null, experience || null,
+    name !== undefined ? (name || null) : existing.name,
+    phone !== undefined ? (phone || null) : existing.phone,
+    specialty !== undefined ? (specialty || null) : existing.specialty,
+    hourly_rate !== undefined ? hourly_rate : existing.hourly_rate,
+    bio !== undefined ? (bio || null) : existing.bio,
+    photos !== undefined ? photos : existing.photos,
+    videos !== undefined ? videos : existing.videos,
+    experience !== undefined ? experience : existing.experience,
     coachId
   );
+  
   const coach = db.prepare('SELECT * FROM coaches WHERE id = ?').get(coachId);
   res.json({ message: '更新成功', coach });
 });
@@ -78,13 +88,27 @@ router.get('/bookings/:id', authMiddleware, roleCheck('coach'), function (req, r
     return res.status(404).json({ error: '教练信息不存在' });
   }
   const booking = db.prepare(`
-    SELECT b.*, u.username, u.phone, ts.start_time, ts.end_time, ts.session_type, cn.note as student_note
+    SELECT 
+      b.*, 
+      u.username, 
+      u.phone, 
+      u.created_at as user_created_at,
+      ts.start_time, 
+      ts.end_time, 
+      ts.session_type, 
+      cn.note as student_note,
+      (SELECT COUNT(DISTINCT b2.id) FROM bookings b2 
+       WHERE b2.user_id = b.user_id AND b2.coach_id = ? AND b2.status IN ('paid', 'checked_in')) as total_lessons,
+      (SELECT MAX(b2.booking_date) FROM bookings b2 
+       WHERE b2.user_id = b.user_id AND b2.coach_id = ? AND b2.status IN ('paid', 'checked_in')) as last_lesson_date,
+      (SELECT AVG(b2.rating) FROM bookings b2 
+       WHERE b2.user_id = b.user_id AND b2.coach_id = ? AND b2.status IN ('paid', 'checked_in') AND b2.rating IS NOT NULL) as avg_rating
     FROM bookings b
     JOIN users u ON b.user_id = u.id
     JOIN time_slots ts ON b.slot_id = ts.id
-    LEFT JOIN coach_notes cn ON cn.coach_id = b.coach_id AND cn.student_id = b.user_id
+    LEFT JOIN coach_notes cn ON cn.coach_id = ? AND cn.student_id = b.user_id
     WHERE b.id = ? AND b.coach_id = ?
-  `).get(req.params.id, coachId);
+  `).get(coachId, coachId, coachId, coachId, req.params.id, coachId);
   if (!booking) {
     return res.status(404).json({ error: '预约不存在' });
   }
@@ -112,16 +136,16 @@ router.get('/students', authMiddleware, roleCheck('coach'), function (req, res) 
   }
   const students = db.prepare(`
     SELECT 
-      u.id, u.username, u.phone,
+      u.id, u.username, u.phone, u.created_at,
       COUNT(DISTINCT CASE WHEN b.status IN ('paid', 'checked_in') THEN b.id END) as total_lessons,
       MAX(b.booking_date) as last_lesson_date,
-      AVG(CASE WHEN b.status IN ('paid', 'checked_in') THEN b.rating END) as avg_rating,
+      AVG(CASE WHEN b.status IN ('paid', 'checked_in') AND b.rating IS NOT NULL THEN b.rating END) as avg_rating,
       cn.note
     FROM users u
     JOIN bookings b ON b.user_id = u.id
     LEFT JOIN coach_notes cn ON cn.coach_id = ? AND cn.student_id = u.id
     WHERE b.coach_id = ? AND b.status != 'cancelled'
-    GROUP BY u.id, u.username, u.phone, cn.note
+    GROUP BY u.id, u.username, u.phone, u.created_at, cn.note
     ORDER BY last_lesson_date DESC
   `).all(coachId, coachId);
   res.json({ students });
@@ -135,11 +159,11 @@ router.get('/students/:id', authMiddleware, roleCheck('coach'), function (req, r
   const student = db.prepare(`
     SELECT 
       u.id, u.username, u.phone, u.created_at,
-      COUNT(DISTINCT b.id) as total_lessons,
+      COUNT(DISTINCT CASE WHEN b.status IN ('paid', 'checked_in') THEN b.id END) as total_lessons,
       MAX(b.booking_date) as last_lesson_date,
-      AVG(b.rating) as avg_rating
+      AVG(CASE WHEN b.status IN ('paid', 'checked_in') AND b.rating IS NOT NULL THEN b.rating END) as avg_rating
     FROM users u
-    LEFT JOIN bookings b ON b.user_id = u.id AND b.coach_id = ? AND b.status IN ('paid', 'checked_in')
+    LEFT JOIN bookings b ON b.user_id = u.id AND b.coach_id = ?
     WHERE u.id = ?
     GROUP BY u.id, u.username, u.phone, u.created_at
   `).get(coachId, req.params.id);

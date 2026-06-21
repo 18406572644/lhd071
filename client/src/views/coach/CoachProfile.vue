@@ -156,8 +156,20 @@ async function loadProfile() {
     form.hourly_rate = coach.hourly_rate || null
     form.bio = coach.bio || ''
     form.experience = coach.experience || 0
-    photoList.value = coach.photos ? coach.photos.split(',').filter(p => p) : []
-    videoList.value = coach.videos ? coach.videos.split(',').filter(v => v) : []
+    
+    if (coach.photos && typeof coach.photos === 'string' && coach.photos.trim()) {
+      const rawPhotos = coach.photos.split(',')
+      photoList.value = [...new Set(rawPhotos)].filter(p => p && p.trim())
+    } else {
+      photoList.value = []
+    }
+    
+    if (coach.videos && typeof coach.videos === 'string' && coach.videos.trim()) {
+      const rawVideos = coach.videos.split(',')
+      videoList.value = [...new Set(rawVideos)].filter(v => v && v.trim())
+    } else {
+      videoList.value = []
+    }
   } catch {}
 }
 
@@ -169,10 +181,11 @@ async function saveProfile() {
   try {
     await api.put('/coach/profile', {
       ...form,
-      photos: photoList.value.join(','),
-      videos: videoList.value.join(','),
+      photos: photoList.value.length > 0 ? photoList.value.join(',') : null,
+      videos: videoList.value.length > 0 ? videoList.value.join(',') : null,
     })
     ElMessage.success('保存成功')
+    await loadProfile()
   } catch {
   } finally {
     saving.value = false
