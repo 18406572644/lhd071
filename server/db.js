@@ -37,6 +37,10 @@ db.exec(`
     specialty TEXT,
     hourly_rate REAL,
     user_id INTEGER,
+    bio TEXT,
+    photos TEXT,
+    videos TEXT,
+    experience INTEGER DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 
@@ -50,6 +54,9 @@ db.exec(`
     status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'paid', 'checked_in', 'cancelled')),
     payment_status TEXT DEFAULT 'unpaid' CHECK(payment_status IN ('unpaid', 'paid', 'refunded')),
     amount REAL NOT NULL,
+    review TEXT,
+    rating INTEGER,
+    coach_note TEXT,
     created_at TEXT DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (slot_id) REFERENCES time_slots(id),
@@ -161,6 +168,29 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS coach_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coach_id INTEGER NOT NULL,
+    day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 6),
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    is_available INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (coach_id) REFERENCES coaches(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS coach_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coach_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    note TEXT,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (coach_id) REFERENCES coaches(id),
+    FOREIGN KEY (student_id) REFERENCES users(id),
+    UNIQUE(coach_id, student_id)
+  );
 `);
 
 const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
@@ -170,11 +200,21 @@ if (userCount === 0) {
     'admin', hashedPassword, '13800000000', 'admin', 0, 0
   );
 
-  db.prepare('INSERT INTO coaches (name, phone, specialty, hourly_rate, user_id) VALUES (?, ?, ?, ?, ?)').run(
-    '张教练', '13800001111', '街式滑板', 200, null
+  const coach1Password = bcrypt.hashSync('coach123', 10);
+  const coach1UserId = db.prepare('INSERT INTO users (username, password, phone, role, balance, points) VALUES (?, ?, ?, ?, ?, ?)').run(
+    'coach1', coach1Password, '13800001111', 'coach', 0, 0
+  ).lastInsertRowid;
+  
+  const coach2Password = bcrypt.hashSync('coach123', 10);
+  const coach2UserId = db.prepare('INSERT INTO users (username, password, phone, role, balance, points) VALUES (?, ?, ?, ?, ?, ?)').run(
+    'coach2', coach2Password, '13800002222', 'coach', 0, 0
+  ).lastInsertRowid;
+
+  db.prepare('INSERT INTO coaches (name, phone, specialty, hourly_rate, user_id, bio, experience) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    '张教练', '13800001111', '街式滑板', 200, coach1UserId, '从事滑板教学8年，擅长街式动作教学，教学风格耐心细致，深受学员喜爱。', 8
   );
-  db.prepare('INSERT INTO coaches (name, phone, specialty, hourly_rate, user_id) VALUES (?, ?, ?, ?, ?)').run(
-    '李教练', '13800002222', '碗池滑板', 180, null
+  db.prepare('INSERT INTO coaches (name, phone, specialty, hourly_rate, user_id, bio, experience) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    '李教练', '13800002222', '碗池滑板', 180, coach2UserId, '国家一级滑板运动员，擅长碗池、U池技巧教学，曾获多项国内赛事奖项。', 6
   );
 
   const insertSlot = db.prepare('INSERT INTO time_slots (type, start_time, end_time, capacity, price, session_type) VALUES (?, ?, ?, ?, ?, ?)');

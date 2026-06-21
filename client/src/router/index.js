@@ -88,6 +88,48 @@ const routes = [
     component: () => import('../views/admin/AdminBookings.vue'),
     meta: { requiresAuth: true, requiresAdmin: true },
   },
+  {
+    path: '/coach',
+    name: 'CoachDashboard',
+    component: () => import('../views/coach/CoachDashboard.vue'),
+    meta: { requiresAuth: true, requiresCoach: true },
+  },
+  {
+    path: '/coach/schedule',
+    name: 'CoachSchedule',
+    component: () => import('../views/coach/CoachSchedule.vue'),
+    meta: { requiresAuth: true, requiresCoach: true },
+  },
+  {
+    path: '/coach/students',
+    name: 'CoachStudents',
+    component: () => import('../views/coach/CoachStudents.vue'),
+    meta: { requiresAuth: true, requiresCoach: true },
+  },
+  {
+    path: '/coach/students/:id',
+    name: 'CoachStudentDetail',
+    component: () => import('../views/coach/CoachStudentDetail.vue'),
+    meta: { requiresAuth: true, requiresCoach: true },
+  },
+  {
+    path: '/coach/stats',
+    name: 'CoachStats',
+    component: () => import('../views/coach/CoachStats.vue'),
+    meta: { requiresAuth: true, requiresCoach: true },
+  },
+  {
+    path: '/coach/profile',
+    name: 'CoachProfile',
+    component: () => import('../views/coach/CoachProfile.vue'),
+    meta: { requiresAuth: true, requiresCoach: true },
+  },
+  {
+    path: '/coach/preferences',
+    name: 'CoachPreferences',
+    component: () => import('../views/coach/CoachPreferences.vue'),
+    meta: { requiresAuth: true, requiresCoach: true },
+  },
 ]
 
 const router = createRouter({
@@ -102,6 +144,13 @@ router.beforeEach((to, from, next) => {
   } else if (to.meta.requiresAdmin) {
     const user = JSON.parse(localStorage.getItem('user') || 'null')
     if (!user || user.role !== 'admin') {
+      next('/')
+    } else {
+      next()
+    }
+  } else if (to.meta.requiresCoach) {
+    const user = JSON.parse(localStorage.getItem('user') || 'null')
+    if (!user || user.role !== 'coach') {
       next('/')
     } else {
       next()

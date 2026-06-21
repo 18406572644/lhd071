@@ -45,6 +45,43 @@ cron.schedule('0 * * * *', function () {
   }
 });
 
+cron.schedule('0 * * * *', function () {
+  const now = new Date();
+  const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const dateStr = twoHoursLater.toISOString().slice(0, 10);
+  const hourStr = twoHoursLater.toTimeString().slice(0, 5);
+
+  const coachBookings = db.prepare(`
+    SELECT 
+      b.id, b.coach_id, b.user_id,
+      u.username as student_name, u.phone as student_phone,
+      ts.start_time, ts.end_time, b.booking_date,
+      c.user_id as coach_user_id
+    FROM bookings b
+    JOIN users u ON b.user_id = u.id
+    JOIN time_slots ts ON b.slot_id = ts.id
+    JOIN coaches c ON c.id = b.coach_id
+    WHERE b.booking_date = ? AND ts.start_time = ? 
+      AND b.status IN ('paid', 'pending') 
+      AND b.coach_id IS NOT NULL
+  `).all(dateStr, hourStr);
+
+  const insertMessage = db.prepare('INSERT INTO messages (user_id, type, title, content, is_read) VALUES (?, ?, ?, ?, ?)');
+  for (const b of coachBookings) {
+    if (b.coach_user_id) {
+      insertMessage.run(
+        b.coach_user_id,
+        'reminder',
+        '课程提醒',
+        '您在 ' + b.booking_date + ' ' + b.start_time + '-' + b.end_time + 
+        ' 有一节私教课，学员：' + b.student_name + 
+        '，联系电话：' + (b.student_phone || '未提供') + '，请提前做好准备。',
+        0
+      );
+    }
+  }
+});
+
 const PORT = process.env.PORT || 6071;
 app.listen(PORT, function () {
   console.log('滑板公园预约系统服务器运行在端口 ' + PORT);

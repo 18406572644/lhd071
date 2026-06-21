@@ -61,10 +61,18 @@ async function handleLogin() {
 
   loading.value = true
   try {
-    await userStore.login({ username: form.username, password: form.password })
+    const data = await userStore.login({ username: form.username, password: form.password })
     ElMessage.success('登录成功')
-    const redirect = route.query.redirect || '/'
-    router.push(redirect)
+    const redirect = route.query.redirect
+    if (redirect) {
+      router.push(redirect)
+    } else if (data.user.role === 'coach') {
+      router.push('/coach')
+    } else if (data.user.role === 'admin') {
+      router.push('/admin')
+    } else {
+      router.push('/')
+    }
   } catch {
   } finally {
     loading.value = false

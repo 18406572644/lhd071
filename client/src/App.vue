@@ -14,6 +14,7 @@
         </div>
 
         <el-menu
+          v-if="userStore.user?.role !== 'coach'"
           :default-active="activeMenu"
           mode="horizontal"
           class="nav-menu"
@@ -27,6 +28,22 @@
           <el-menu-item index="/locker">储物柜</el-menu-item>
           <el-menu-item index="/profile">个人中心</el-menu-item>
           <el-menu-item v-if="userStore.user?.role === 'admin'" index="/admin">后台管理</el-menu-item>
+        </el-menu>
+
+        <el-menu
+          v-else
+          :default-active="activeMenu"
+          mode="horizontal"
+          class="nav-menu"
+          :ellipsis="false"
+          router
+        >
+          <el-menu-item index="/coach">工作台</el-menu-item>
+          <el-menu-item index="/coach/schedule">我的课表</el-menu-item>
+          <el-menu-item index="/coach/students">学员管理</el-menu-item>
+          <el-menu-item index="/coach/stats">课时统计</el-menu-item>
+          <el-menu-item index="/coach/profile">个人资料</el-menu-item>
+          <el-menu-item index="/coach/preferences">时段偏好</el-menu-item>
         </el-menu>
 
         <div class="header-right">
@@ -46,8 +63,17 @@
               </span>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                  <el-dropdown-item command="my-bookings">我的预约</el-dropdown-item>
+                  <template v-if="userStore.user?.role === 'coach'">
+                    <el-dropdown-item command="/coach">工作台</el-dropdown-item>
+                    <el-dropdown-item command="/coach/schedule">我的课表</el-dropdown-item>
+                    <el-dropdown-item command="/coach/students">学员管理</el-dropdown-item>
+                    <el-dropdown-item command="/coach/stats">课时统计</el-dropdown-item>
+                    <el-dropdown-item command="/coach/profile">个人资料</el-dropdown-item>
+                  </template>
+                  <template v-else>
+                    <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+                    <el-dropdown-item command="my-bookings">我的预约</el-dropdown-item>
+                  </template>
                   <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -100,6 +126,8 @@ function handleCommand(command) {
   if (command === 'logout') {
     userStore.logout()
     router.push('/login')
+  } else if (command.startsWith('/')) {
+    router.push(command)
   } else {
     router.push(`/${command}`)
   }
