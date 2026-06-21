@@ -328,6 +328,380 @@ router.put('/preferences', authMiddleware, roleCheck('coach'), function (req, re
   }
 });
 
+function generateScheduleForCoach(coachId, weeks = 2, startDate = null) {
+  const preferences = db.prepare(`
+    SELECT * FROM coach_preferences
+    WHERE coach_id = ? AND is_available = 1
+    ORDER BY day_of_week, start_time
+  `).all(coachId);
+
+  if (preferences.length === 0) {
+    return { generated: 0, message: '未设置可用时间偏好' };
+  }
+
+  const exceptions = db.prepare(`
+    SELECT date, type FROM coach_schedule_exceptions
+    WHERE coach_id = ?
+  `).all(coachId);
+  const offDates = new Set(exceptions.filter(e => e.type === 'off').map(e => e.date));
+
+  const allPrivateSlots = db.prepare(`
+    SELECT * FROM time_slots WHERE session_type = 'private'
+    ORDER BY start_time
+  `).all();
+
+  const today = new Date();
+  const start = startDate ? new Date(startDate) : new Date(today);
+  start.setHours(0, 0, 0, 0);
+
+  const endDate = new Date(start);
+  endDate.setDate(endDate.getDate() + weeks * 7 - 1);
+
+  const insertSchedule = db.prepare(`
+    INSERT INTO coach_schedules (coach_id, date, slot_id, available, source)
+    VALUES (?, ?, ?, ?, 'auto')
+  `);
+
+  const updateAuto = db.prepare(`
+    UPDATE coach_schedules SET available = 1, source = 'auto'
+    WHERE coach_id = ? AND date = ? AND slot_id = ? AND source = 'auto'
+  `);
+
+  let generatedCount = 0;
+  let skippedManualCount = 0;
+  const skippedDates = [];
+
+  const transaction = db.transaction(() => {
+    for (let d = new Date(start); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayOfWeek = d.getDay();
+
+      if (offDates.has(dateStr)) {
+        skippedDates.push({ date: dateStr, reason: '例外日期-休息' });
+        continue;
+      }
+
+      const dayPrefs = preferences.filter(p => p.day_of_week === dayOfWeek);
+      if (dayPrefs.length === 0) {
+        continue;
+      }
+
+      for (const slot of allPrivateSlots) {
+        const slotStart = slot.start_time;
+        const slotEnd = slot.end_time;
+
+        let isAvailable = false;
+        for (const pref of dayPrefs) {
+          if (slotStart >= pref.start_time && slotEnd <= pref.end_time) {
+            isAvailable = true;
+            break;
+          }
+        }
+
+        if (isAvailable) {
+          const existing = db.prepare(`
+            SELECT * FROM coach_schedules
+            WHERE coach_id = ? AND date = ? AND slot_id = ?
+          `).get(coachId, dateStr, slot.id);
+
+          if (existing) {
+            if (existing.source === 'manual' || existing.source === 'exception') {
+              skippedManualCount++;
+            } else {
+              updateAuto.run(coachId, dateStr, slot.id);
+              generatedCount++;
+            }
+          } else {
+            try {
+              insertSchedule.run(coachId, dateStr, slot.id, 1);
+              generatedCount++;
+            } catch (e) {
+              if (e.message && e.message.includes('UNIQUE')) {
+                skippedManualCount++;
+              } else {
+                throw e;
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  try {
+    transaction();
+    return {
+      generated: generatedCount,
+      skipped_manual: skippedManualCount,
+      weeks,
+      start_date: start.toISOString().slice(0, 10),
+      end_date: endDate.toISOString().slice(0, 10),
+      skipped_dates: skippedDates
+    };
+  } catch (e) {
+    throw e;
+  }
+}
+
+router.post('/schedule/generate', authMiddleware, roleCheck('coach'), function (req, res) {
+  const coachId = getCoachIdByUserId(req.user.id);
+  if (!coachId) {
+    return res.status(404).json({ error: '教练信息不存在' });
+  }
+
+  const { weeks = 2, start_date } = req.body;
+
+  if (weeks < 1 || weeks > 4) {
+    return res.status(400).json({ error: '周数必须在 1-4 周之间' });
+  }
+
+  try {
+    const result = generateScheduleForCoach(coachId, weeks, start_date);
+    res.json({
+      message: `成功生成 ${result.generated} 个可预约时段`,
+      ...result
+    });
+  } catch (e) {
+    console.error('生成排班失败:', e);
+    res.status(500).json({ error: '生成排班失败' });
+  }
+});
+
+router.get('/schedule/overview', authMiddleware, roleCheck('coach'), function (req, res) {
+  const coachId = getCoachIdByUserId(req.user.id);
+  if (!coachId) {
+    return res.status(404).json({ error: '教练信息不存在' });
+  }
+
+  const { start, end } = req.query;
+
+  let sql = `
+    SELECT cs.*, ts.start_time, ts.end_time
+    FROM coach_schedules cs
+    JOIN time_slots ts ON cs.slot_id = ts.id
+    WHERE cs.coach_id = ?
+  `;
+  const params = [coachId];
+
+  if (start) {
+    sql += ' AND cs.date >= ?';
+    params.push(start);
+  }
+  if (end) {
+    sql += ' AND cs.date <= ?';
+    params.push(end);
+  }
+
+  sql += ' ORDER BY cs.date, ts.start_time';
+
+  const schedule = db.prepare(sql).all(...params);
+
+  const exceptions = db.prepare(`
+    SELECT * FROM coach_schedule_exceptions
+    WHERE coach_id = ?
+  `).all(coachId);
+
+  res.json({ schedule, exceptions });
+});
+
+router.post('/schedule/batch-adjust', authMiddleware, roleCheck('coach'), function (req, res) {
+  const coachId = getCoachIdByUserId(req.user.id);
+  if (!coachId) {
+    return res.status(404).json({ error: '教练信息不存在' });
+  }
+
+  const { date_range, day_of_week, time_range, action, new_start_time, new_end_time } = req.body;
+
+  if (!date_range || !date_range.start || !date_range.end) {
+    return res.status(400).json({ error: '请提供日期范围' });
+  }
+
+  if (!action) {
+    return res.status(400).json({ error: '请提供调整操作' });
+  }
+
+  let sql = `
+    SELECT cs.*, ts.start_time, ts.end_time
+    FROM coach_schedules cs
+    JOIN time_slots ts ON cs.slot_id = ts.id
+    WHERE cs.coach_id = ? AND cs.date >= ? AND cs.date <= ?
+  `;
+  const params = [coachId, date_range.start, date_range.end];
+
+  if (day_of_week !== undefined && day_of_week !== null) {
+    sql += " AND strftime('%w', cs.date) = ?";
+    params.push(String(day_of_week));
+  }
+
+  if (time_range && time_range.start && time_range.end) {
+    sql += ' AND ts.start_time >= ? AND ts.end_time <= ?';
+    params.push(time_range.start, time_range.end);
+  }
+
+  const schedules = db.prepare(sql).all(...params);
+
+  if (schedules.length === 0) {
+    return res.json({ message: '没有匹配的时段', updated: 0 });
+  }
+
+  const updateStmt = db.prepare(`
+    UPDATE coach_schedules SET available = ?, source = 'manual'
+    WHERE id = ?
+  `);
+
+  let updatedCount = 0;
+
+  const transaction = db.transaction(() => {
+    for (const sched of schedules) {
+      let available = sched.available;
+
+      if (action === 'enable') {
+        available = 1;
+      } else if (action === 'disable') {
+        available = 0;
+      } else if (action === 'toggle') {
+        available = sched.available ? 0 : 1;
+      }
+
+      if (available !== sched.available) {
+        updateStmt.run(available, sched.id);
+        updatedCount++;
+      }
+    }
+  });
+
+  try {
+    transaction();
+    res.json({
+      message: `成功调整 ${updatedCount} 个时段`,
+      updated: updatedCount,
+      total_matched: schedules.length
+    });
+  } catch (e) {
+    console.error('批量调整失败:', e);
+    res.status(500).json({ error: '批量调整失败' });
+  }
+});
+
+router.get('/schedule/exceptions', authMiddleware, roleCheck('coach'), function (req, res) {
+  const coachId = getCoachIdByUserId(req.user.id);
+  if (!coachId) {
+    return res.status(404).json({ error: '教练信息不存在' });
+  }
+
+  const exceptions = db.prepare(`
+    SELECT * FROM coach_schedule_exceptions
+    WHERE coach_id = ?
+    ORDER BY date
+  `).all(coachId);
+
+  res.json({ exceptions });
+});
+
+router.post('/schedule/exceptions', authMiddleware, roleCheck('coach'), function (req, res) {
+  const coachId = getCoachIdByUserId(req.user.id);
+  if (!coachId) {
+    return res.status(404).json({ error: '教练信息不存在' });
+  }
+
+  const { date, type, reason } = req.body;
+
+  if (!date || !type) {
+    return res.status(400).json({ error: '缺少必填字段' });
+  }
+
+  if (!['off', 'custom'].includes(type)) {
+    return res.status(400).json({ error: '类型无效' });
+  }
+
+  const existing = db.prepare(`
+    SELECT * FROM coach_schedule_exceptions
+    WHERE coach_id = ? AND date = ?
+  `).get(coachId, date);
+
+  let result;
+  if (existing) {
+    result = db.prepare(`
+      UPDATE coach_schedule_exceptions SET type = ?, reason = ?
+      WHERE id = ?
+    `).run(type, reason || null, existing.id);
+  } else {
+    result = db.prepare(`
+      INSERT INTO coach_schedule_exceptions (coach_id, date, type, reason)
+      VALUES (?, ?, ?, ?)
+    `).run(coachId, date, type, reason || null);
+  }
+
+  if (type === 'off') {
+    db.prepare(`
+      UPDATE coach_schedules
+      SET available = 0, source = 'exception'
+      WHERE coach_id = ? AND date = ?
+    `).run(coachId, date);
+  }
+
+  const exception = db.prepare(`
+    SELECT * FROM coach_schedule_exceptions WHERE id = ?
+  `).get(existing ? existing.id : result.lastInsertRowid);
+
+  res.json({ message: existing ? '更新成功' : '添加成功', exception });
+});
+
+router.delete('/schedule/exceptions/:id', authMiddleware, roleCheck('coach'), function (req, res) {
+  const coachId = getCoachIdByUserId(req.user.id);
+  if (!coachId) {
+    return res.status(404).json({ error: '教练信息不存在' });
+  }
+
+  const exception = db.prepare(`
+    SELECT * FROM coach_schedule_exceptions WHERE id = ? AND coach_id = ?
+  `).get(req.params.id, coachId);
+
+  if (!exception) {
+    return res.status(404).json({ error: '例外日期不存在' });
+  }
+
+  const date = exception.date;
+
+  db.prepare('DELETE FROM coach_schedule_exceptions WHERE id = ?').run(req.params.id);
+
+  if (exception.type === 'off') {
+    const prefs = db.prepare(`
+      SELECT * FROM coach_preferences
+      WHERE coach_id = ? AND is_available = 1 AND day_of_week = strftime('%w', ?)
+    `).all(coachId, date);
+
+    if (prefs.length > 0) {
+      const slots = db.prepare(`
+        SELECT ts.* FROM time_slots ts
+        WHERE ts.session_type = 'private'
+        ORDER BY ts.start_time
+      `).all();
+
+      for (const slot of slots) {
+        for (const pref of prefs) {
+          if (slot.start_time >= pref.start_time && slot.end_time <= pref.end_time) {
+            const existing = db.prepare(`
+              SELECT * FROM coach_schedules
+              WHERE coach_id = ? AND date = ? AND slot_id = ?
+            `).get(coachId, date, slot.id);
+
+            if (existing && existing.source === 'exception') {
+              db.prepare(`
+                UPDATE coach_schedules SET available = 1, source = 'auto'
+                WHERE id = ?
+              `).run(existing.id);
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  res.json({ message: '删除成功' });
+});
+
 router.get('/dashboard', authMiddleware, roleCheck('coach'), function (req, res) {
   const coachId = getCoachIdByUserId(req.user.id);
   if (!coachId) {
@@ -379,3 +753,4 @@ router.get('/dashboard', authMiddleware, roleCheck('coach'), function (req, res)
 });
 
 module.exports = router;
+module.exports.generateScheduleForCoach = generateScheduleForCoach;

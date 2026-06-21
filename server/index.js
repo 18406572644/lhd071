@@ -89,6 +89,23 @@ cron.schedule('0 * * * *', function () {
   }
 });
 
+const { generateScheduleForCoach } = require('./routes/coach');
+
+cron.schedule('0 2 * * 1', function () {
+  console.log('开始每周自动生成教练排班...');
+  try {
+    const coaches = db.prepare('SELECT id FROM coaches').all();
+    let totalGenerated = 0;
+    for (const coach of coaches) {
+      const result = generateScheduleForCoach(coach.id, 2);
+      totalGenerated += result.generated;
+    }
+    console.log(`每周排班生成完成，共生成 ${totalGenerated} 个时段`);
+  } catch (e) {
+    console.error('每周自动生成排班失败:', e);
+  }
+});
+
 const PORT = process.env.PORT || 6071;
 app.listen(PORT, function () {
   console.log('滑板公园预约系统服务器运行在端口 ' + PORT);

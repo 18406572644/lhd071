@@ -71,8 +71,20 @@ db.exec(`
     date TEXT NOT NULL,
     slot_id INTEGER NOT NULL,
     available INTEGER DEFAULT 1,
+    source TEXT DEFAULT 'manual' CHECK(source IN ('auto', 'manual', 'exception')),
     FOREIGN KEY (coach_id) REFERENCES coaches(id),
-    FOREIGN KEY (slot_id) REFERENCES time_slots(id)
+    FOREIGN KEY (slot_id) REFERENCES time_slots(id),
+    UNIQUE(coach_id, date, slot_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS coach_schedule_exceptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coach_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('off', 'custom')),
+    reason TEXT,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (coach_id) REFERENCES coaches(id)
   );
 
   CREATE TABLE IF NOT EXISTS equipment (
@@ -420,5 +432,19 @@ function addColumnIfNotExists(table, column, definition) {
 
 addColumnIfNotExists('bookings', 'qr_token', 'TEXT');
 addColumnIfNotExists('bookings', 'is_featured', 'INTEGER DEFAULT 0');
+
+addColumnIfNotExists('coach_schedules', 'source', "TEXT DEFAULT 'manual'");
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS coach_schedule_exceptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coach_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('off', 'custom')),
+    reason TEXT,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (coach_id) REFERENCES coaches(id)
+  );
+`);
 
 module.exports = db;
