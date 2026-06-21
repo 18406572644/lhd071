@@ -27,6 +27,40 @@
       </div>
     </section>
 
+    <section v-if="isLoggedIn && recommendations.length > 0" class="recommend-section">
+      <div class="section-header">
+        <h2 class="section-title glow-text">为你推荐</h2>
+        <span class="recommend-tip">根据你的预约习惯推荐</span>
+      </div>
+      <div class="recommend-grid">
+        <div
+          v-for="slot in recommendations"
+          :key="`${slot.date}-${slot.id}`"
+          class="skate-card recommend-card"
+          @click="goToBooking(slot)"
+        >
+          <div class="recommend-date">
+            <span class="date-day">{{ formatDate(slot.date).day }}</span>
+            <span class="date-weekday">{{ formatDate(slot.date).weekday }}</span>
+          </div>
+          <div class="recommend-time">
+            <span class="time-range">{{ slot.start_time }} - {{ slot.end_time }}</span>
+            <span class="recommend-tag" :class="`recommend-tag--${slot.status}`">
+              {{ getStatusText(slot.status) }}
+            </span>
+          </div>
+          <div class="recommend-price">
+            <span class="price-symbol">¥</span>
+            <span class="price-amount">{{ slot.price }}</span>
+            <span class="price-unit">/时段</span>
+          </div>
+          <div class="recommend-remaining">
+            剩余 <strong>{{ slot.remaining }}</strong> 个名额
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="features-section">
       <h2 class="section-title glow-text">我们的服务</h2>
       <div class="features-grid">
@@ -120,6 +154,59 @@
 </template>
 
 <script setup>
+import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { api } from '../api'
+import dayjs from 'dayjs'
+
+const router = useRouter()
+const recommendations = ref([])
+
+const isLoggedIn = computed(() => {
+  return !!localStorage.getItem('token')
+})
+
+function getStatusText(status) {
+  const map = {
+    full: '已约满',
+    limited: '紧张',
+    plenty: '充足'
+  }
+  return map[status] || ''
+}
+
+function formatDate(dateStr) {
+  const d = dayjs(dateStr)
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return {
+    day: d.format('MM/DD'),
+    weekday: weekdays[d.day()]
+  }
+}
+
+function goToBooking(slot) {
+  router.push({
+    path: '/booking',
+    query: {
+      date: slot.date,
+      slot_id: slot.id
+    }
+  })
+}
+
+async function fetchRecommendations() {
+  if (!isLoggedIn.value) return
+  try {
+    const { data } = await api.get('/bookings/recommend/slots')
+    recommendations.value = data.recommendations || []
+  } catch (e) {
+    recommendations.value = []
+  }
+}
+
+onMounted(() => {
+  fetchRecommendations()
+})
 </script>
 
 <style scoped>
@@ -169,12 +256,129 @@
   height: 100%;
 }
 
+.recommend-section {
+  padding: 40px 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+
 .section-title {
   font-size: 28px;
   font-weight: 700;
-  text-align: center;
-  margin-bottom: 36px;
+  margin-bottom: 0;
   letter-spacing: 2px;
+}
+
+.recommend-tip {
+  font-size: 13px;
+  color: #888;
+}
+
+.recommend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.recommend-card {
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.recommend-card:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+  transform: translateY(-4px);
+}
+
+.recommend-date {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.date-day {
+  font-size: 20px;
+  font-weight: 700;
+  color: #00E5FF;
+}
+
+.date-weekday {
+  font-size: 13px;
+  color: #888;
+}
+
+.recommend-time {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.time-range {
+  font-size: 15px;
+  font-weight: 600;
+  color: #F5F7FA;
+}
+
+.recommend-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.recommend-tag--full {
+  background: #ff4d4f;
+  color: #fff;
+}
+
+.recommend-tag--limited {
+  background: #faad14;
+  color: #fff;
+}
+
+.recommend-tag--plenty {
+  background: #52c41a;
+  color: #fff;
+}
+
+.recommend-price {
+  margin-bottom: 8px;
+}
+
+.price-symbol {
+  font-size: 14px;
+  color: #00E5FF;
+  vertical-align: top;
+}
+
+.price-amount {
+  font-size: 28px;
+  font-weight: 800;
+  color: #00E5FF;
+}
+
+.price-unit {
+  font-size: 12px;
+  color: #888;
+  margin-left: 4px;
+}
+
+.recommend-remaining {
+  font-size: 12px;
+  color: #888;
+}
+
+.recommend-remaining strong {
+  color: #00E5FF;
 }
 
 .features-section {
@@ -332,6 +536,16 @@
 
   .pricing-grid {
     grid-template-columns: 1fr;
+  }
+
+  .recommend-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 }
 </style>

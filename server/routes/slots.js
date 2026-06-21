@@ -5,13 +5,43 @@ const { authMiddleware, roleCheck } = require('../middleware');
 const router = express.Router();
 
 router.get('/', function (req, res) {
-  const { type } = req.query;
-  let slots;
+  const { type, date, session_type } = req.query;
+  let sql = 'SELECT * FROM time_slots WHERE 1=1';
+  const params = [];
+  
   if (type) {
-    slots = db.prepare('SELECT * FROM time_slots WHERE type = ?').all(type);
-  } else {
-    slots = db.prepare('SELECT * FROM time_slots').all();
+    sql += ' AND type = ?';
+    params.push(type);
   }
+  if (session_type) {
+    sql += ' AND session_type = ?';
+    params.push(session_type);
+  }
+  sql += ' ORDER BY start_time ASC';
+  
+  let slots = db.prepare(sql).all(...params);
+  
+  if (date) {
+    const bookingCountStmt = db.prepare(`
+      SELECT COUNT(*) as cnt FROM bookings 
+      WHERE slot_id = ? AND booking_date = ? AND status IN ('paid', 'pending', 'checked_in')
+    `);
+    
+    slots = slots.map(slot => {
+      const count = bookingCountStmt.get(slot.id, date).cnt;
+      const remaining = slot.capacity - count;
+      let status = 'available';
+      if (remaining <= 0) {
+        status = 'full';
+      } else if (remaining <= 3) {
+        status = 'limited';
+      } else {
+        status = 'plenty';
+      }
+      return { ...slot, remaining, status };
+    });
+  }
+  
   res.json({ slots });
 });
 
