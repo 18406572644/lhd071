@@ -289,6 +289,66 @@ if (userCount === 0) {
   for (const l of lockerData) {
     insertLocker.run(...l);
   }
+
+  const userPassword = bcrypt.hashSync('user123', 10);
+  const student1Id = db.prepare('INSERT INTO users (username, password, phone, role, balance, points) VALUES (?, ?, ?, ?, ?, ?)').run(
+    'student1', userPassword, '13900001111', 'user', 500, 100
+  ).lastInsertRowid;
+  const student2Id = db.prepare('INSERT INTO users (username, password, phone, role, balance, points) VALUES (?, ?, ?, ?, ?, ?)').run(
+    'student2', userPassword, '13900002222', 'user', 300, 50
+  ).lastInsertRowid;
+  const student3Id = db.prepare('INSERT INTO users (username, password, phone, role, balance, points) VALUES (?, ?, ?, ?, ?, ?)').run(
+    'student3', userPassword, '13900003333', 'user', 800, 200
+  ).lastInsertRowid;
+  const student4Id = db.prepare('INSERT INTO users (username, password, phone, role, balance, points) VALUES (?, ?, ?, ?, ?, ?)').run(
+    'student4', userPassword, '13900004444', 'user', 200, 30
+  ).lastInsertRowid;
+
+  const coach1Id = db.prepare('SELECT id FROM coaches WHERE user_id = ?').get(coach1UserId).id;
+  const coach2Id = db.prepare('SELECT id FROM coaches WHERE user_id = ?').get(coach2UserId).id;
+
+  const privateSlotIds = db.prepare('SELECT id FROM time_slots WHERE session_type = ? ORDER BY id').all('private').map(s => s.id);
+
+  const today = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const getDateStr = (daysOffset) => {
+    const d = new Date(today.getTime() + daysOffset * 24 * 60 * 60 * 1000);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  const insertBooking = db.prepare(`INSERT INTO bookings 
+    (user_id, coach_id, slot_id, booking_date, type, status, payment_status, amount, rating, review, coach_note) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+
+  const bookingData = [
+    [student1Id, coach1Id, privateSlotIds[0] || 7, getDateStr(-10), 'private', 'checked_in', 'paid', 150, 5, '张教练教得非常耐心，动作讲解很细致，第一次上课就学会了基础滑行！', '基础滑行掌握良好，下次练习转弯'],
+    [student1Id, coach1Id, privateSlotIds[1] || 8, getDateStr(-7), 'private', 'checked_in', 'paid', 150, 4, '整体不错，就是练习时间有点短', '转弯动作有进步，需要多加练习'],
+    [student2Id, coach1Id, privateSlotIds[0] || 7, getDateStr(-5), 'private', 'checked_in', 'paid', 150, 5, '张教练特别有耐心，零基础也完全不用担心', '胆小的学员，需要多鼓励'],
+    [student3Id, coach1Id, privateSlotIds[1] || 8, getDateStr(-3), 'private', 'paid', 'paid', 150, null, null, null],
+    [student1Id, coach1Id, privateSlotIds[0] || 7, getDateStr(0), 'private', 'paid', 'paid', 150, null, null, null],
+    [student2Id, coach1Id, privateSlotIds[1] || 8, getDateStr(1), 'private', 'pending', 'unpaid', 150, null, null, null],
+    [student4Id, coach1Id, privateSlotIds[0] || 7, getDateStr(2), 'private', 'pending', 'unpaid', 150, null, null, null],
+    [student1Id, coach1Id, privateSlotIds[1] || 8, getDateStr(3), 'private', 'paid', 'paid', 150, null, null, null],
+    [student3Id, coach2Id, privateSlotIds[2] || 15, getDateStr(-8), 'private', 'checked_in', 'paid', 180, 5, '李教练碗池技巧太厉害了，学到了很多专业知识', '有基础，适合进阶技巧训练'],
+    [student4Id, coach2Id, privateSlotIds[3] || 16, getDateStr(-6), 'private', 'checked_in', 'paid', 180, 4, '李教练要求比较严格，但进步很快', '爆发力不错，注意安全防护'],
+    [student3Id, coach2Id, privateSlotIds[2] || 15, getDateStr(-1), 'private', 'paid', 'paid', 180, null, null, null],
+    [student4Id, coach2Id, privateSlotIds[3] || 16, getDateStr(1), 'private', 'pending', 'unpaid', 180, null, null, null],
+    [student2Id, coach2Id, privateSlotIds[2] || 15, getDateStr(4), 'private', 'pending', 'unpaid', 180, null, null, null],
+  ];
+
+  for (const b of bookingData) {
+    insertBooking.run(...b);
+  }
+
+  db.prepare('INSERT INTO coach_notes (coach_id, student_id, note) VALUES (?, ?, ?)').run(
+    coach1Id, student1Id, '学习态度认真，进步很快，建议增加练习频率'
+  );
+  db.prepare('INSERT INTO coach_notes (coach_id, student_id, note) VALUES (?, ?, ?)').run(
+    coach1Id, student2Id, '胆子较小，需要循序渐进，多鼓励'
+  );
+  db.prepare('INSERT INTO coach_notes (coach_id, student_id, note) VALUES (?, ?, ?)').run(
+    coach2Id, student3Id, '有滑板基础，目标明确，适合进阶训练'
+  );
 }
 
 module.exports = db;

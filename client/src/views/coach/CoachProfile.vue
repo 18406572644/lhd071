@@ -72,12 +72,19 @@
                     <el-icon><Close /></el-icon>
                   </el-button>
                 </div>
-                <div v-if="photoList.length < 6" class="upload-btn" @click="uploadPhoto">
+                <label v-if="photoList.length < 6" class="upload-btn">
                   <el-icon :size="24"><Plus /></el-icon>
                   <span>添加照片</span>
-                </div>
+                  <input
+                    ref="photoInputRef"
+                    type="file"
+                    accept="image/*"
+                    style="display: none"
+                    @change="handlePhotoUpload"
+                  />
+                </label>
               </div>
-              <div class="tip">最多上传6张教学照片</div>
+              <div class="tip">最多上传6张教学照片，支持JPG、PNG格式</div>
             </el-form-item>
           </div>
 
@@ -177,15 +184,28 @@ function resetForm() {
   loadProfile()
 }
 
-function uploadPhoto() {
-  const samplePhotos = [
-    'https://images.unsplash.com/photo-1547595628-c61a29f496f0?w=400',
-    'https://images.unsplash.com/photo-1566847438217-76e82d383f84?w=400',
-    'https://images.unsplash.com/photo-1598966739753-188b895b3911?w=400',
-  ]
-  if (photoList.value.length < 6) {
-    const randomPhoto = samplePhotos[Math.floor(Math.random() * samplePhotos.length)]
-    photoList.value.push(randomPhoto)
+const photoInputRef = ref(null)
+
+function handlePhotoUpload(event) {
+  const files = event.target.files
+  if (!files || files.length === 0) return
+  const remainingSlots = 6 - photoList.value.length
+  const filesToProcess = Array.from(files).slice(0, remainingSlots)
+  
+  filesToProcess.forEach(file => {
+    if (!file.type.startsWith('image/')) {
+      ElMessage.warning('请选择图片文件')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      photoList.value.push(e.target.result)
+    }
+    reader.readAsDataURL(file)
+  })
+  
+  if (photoInputRef.value) {
+    photoInputRef.value.value = ''
   }
 }
 

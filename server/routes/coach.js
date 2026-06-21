@@ -113,14 +113,14 @@ router.get('/students', authMiddleware, roleCheck('coach'), function (req, res) 
   const students = db.prepare(`
     SELECT 
       u.id, u.username, u.phone,
-      COUNT(DISTINCT b.id) as total_lessons,
+      COUNT(DISTINCT CASE WHEN b.status IN ('paid', 'checked_in') THEN b.id END) as total_lessons,
       MAX(b.booking_date) as last_lesson_date,
-      AVG(b.rating) as avg_rating,
+      AVG(CASE WHEN b.status IN ('paid', 'checked_in') THEN b.rating END) as avg_rating,
       cn.note
     FROM users u
     JOIN bookings b ON b.user_id = u.id
     LEFT JOIN coach_notes cn ON cn.coach_id = ? AND cn.student_id = u.id
-    WHERE b.coach_id = ? AND b.status IN ('paid', 'checked_in')
+    WHERE b.coach_id = ? AND b.status != 'cancelled'
     GROUP BY u.id, u.username, u.phone, cn.note
     ORDER BY last_lesson_date DESC
   `).all(coachId, coachId);
