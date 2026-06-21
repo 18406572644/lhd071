@@ -24,6 +24,7 @@
           <el-menu-item index="/booking">预约场地</el-menu-item>
           <el-menu-item index="/my-bookings">我的预约</el-menu-item>
           <el-menu-item index="/equipment">装备租赁</el-menu-item>
+          <el-menu-item index="/locker">储物柜</el-menu-item>
           <el-menu-item index="/profile">个人中心</el-menu-item>
           <el-menu-item v-if="userStore.user?.role === 'admin'" index="/admin">后台管理</el-menu-item>
         </el-menu>

@@ -122,6 +122,35 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS lockers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    locker_number TEXT NOT NULL,
+    store TEXT DEFAULT '主店',
+    area TEXT NOT NULL CHECK(area IN ('A', 'B')),
+    size TEXT NOT NULL CHECK(size IN ('small', 'medium', 'large')),
+    status TEXT DEFAULT 'free' CHECK(status IN ('free', 'in_use', 'fault', 'maintenance')),
+    row_num INTEGER DEFAULT 0,
+    col_num INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+  );
+
+  CREATE TABLE IF NOT EXISTS locker_rentals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    locker_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rental_type TEXT NOT NULL CHECK(rental_type IN ('temporary', 'long_term')),
+    billing_cycle TEXT CHECK(billing_cycle IN ('hour', 'day', 'month', 'quarter')),
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    amount REAL NOT NULL,
+    booking_id INTEGER,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'expired', 'cancelled')),
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (locker_id) REFERENCES lockers(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (booking_id) REFERENCES bookings(id)
+  );
+
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -188,6 +217,37 @@ if (userCount === 0) {
   ];
   for (const e of equipments) {
     insertEquipment.run(...e);
+  }
+
+  const insertLocker = db.prepare('INSERT INTO lockers (locker_number, store, area, size, status, row_num, col_num) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const lockerData = [
+    ['A-01', '主店', 'A', 'small', 'free', 0, 0],
+    ['A-02', '主店', 'A', 'small', 'free', 0, 1],
+    ['A-03', '主店', 'A', 'small', 'free', 0, 2],
+    ['A-04', '主店', 'A', 'small', 'free', 0, 3],
+    ['A-05', '主店', 'A', 'medium', 'free', 1, 0],
+    ['A-06', '主店', 'A', 'medium', 'free', 1, 1],
+    ['A-07', '主店', 'A', 'medium', 'free', 1, 2],
+    ['A-08', '主店', 'A', 'medium', 'free', 1, 3],
+    ['A-09', '主店', 'A', 'large', 'free', 2, 0],
+    ['A-10', '主店', 'A', 'large', 'free', 2, 1],
+    ['A-11', '主店', 'A', 'large', 'free', 2, 2],
+    ['A-12', '主店', 'A', 'large', 'free', 2, 3],
+    ['B-01', '主店', 'B', 'small', 'free', 0, 0],
+    ['B-02', '主店', 'B', 'small', 'free', 0, 1],
+    ['B-03', '主店', 'B', 'small', 'free', 0, 2],
+    ['B-04', '主店', 'B', 'small', 'free', 0, 3],
+    ['B-05', '主店', 'B', 'medium', 'free', 1, 0],
+    ['B-06', '主店', 'B', 'medium', 'free', 1, 1],
+    ['B-07', '主店', 'B', 'medium', 'free', 1, 2],
+    ['B-08', '主店', 'B', 'medium', 'free', 1, 3],
+    ['B-09', '主店', 'B', 'large', 'free', 2, 0],
+    ['B-10', '主店', 'B', 'large', 'free', 2, 1],
+    ['B-11', '主店', 'B', 'large', 'free', 2, 2],
+    ['B-12', '主店', 'B', 'large', 'free', 2, 3]
+  ];
+  for (const l of lockerData) {
+    insertLocker.run(...l);
   }
 }
 

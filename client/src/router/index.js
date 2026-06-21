@@ -35,6 +35,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/locker',
+    name: 'Locker',
+    component: () => import('../views/Locker.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('../views/Profile.vue'),
@@ -62,6 +68,12 @@ const routes = [
     path: '/admin/equipment',
     name: 'AdminEquipment',
     component: () => import('../views/admin/AdminEquipment.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/lockers',
+    name: 'AdminLockers',
+    component: () => import('../views/admin/AdminLockers.vue'),
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
